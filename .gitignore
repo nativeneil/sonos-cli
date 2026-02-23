@@ -1,20 +1,14 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
+# Build artifacts
+sonos
+*.out
 
 # Environment variables
 .env
 .env.*
 !.env.example
 
-# Claude settings
-.claude/
-
 # Logs
 *.log
-npm-debug.log*
 
 # OS
 .DS_Store
