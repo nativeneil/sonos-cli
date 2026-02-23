@@ -223,6 +223,9 @@ func GenerateAndPlay(ctx context.Context, options GeneratorOptions) (Result, err
 
 		out.Info("Adding songs to queue...")
 		for _, song := range songs {
+			if len(queuedSongs) >= minSongs {
+				break
+			}
 			key := songKey(song.Song)
 			if _, ok := existingKeys[key]; ok {
 				continue

@@ -14,12 +14,14 @@ const (
 	ProviderClaude Provider = "claude"
 	ProviderOpenAI Provider = "openai"
 	ProviderGemini Provider = "gemini"
+	ProviderGrok   Provider = "grok"
 )
 
 type Config struct {
 	AnthropicAPIKey string
 	OpenAIAPIKey    string
 	GoogleAPIKey    string
+	XAIAPIKey       string
 	SonosAPIURL     string
 	DefaultRoom     string
 	DefaultProvider Provider
@@ -57,6 +59,7 @@ func Load() Config {
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
 		GoogleAPIKey:    os.Getenv("GOOGLE_API_KEY"),
+		XAIAPIKey:       firstNonEmpty(os.Getenv("XAI_API_KEY"), os.Getenv("GROK_API_KEY")),
 		SonosAPIURL:     sonosURL,
 		DefaultRoom:     defaultRoom,
 		DefaultProvider: provider,

@@ -221,6 +221,7 @@ func run(ctx context.Context) error {
 		Anthropic: cfg.AnthropicAPIKey,
 		OpenAI:    cfg.OpenAIAPIKey,
 		Google:    cfg.GoogleAPIKey,
+		XAI:       cfg.XAIAPIKey,
 	}
 	if opts.ProviderSpecified {
 		switch opts.Provider {
@@ -230,6 +231,8 @@ func run(ctx context.Context) error {
 			keys = ai.APIKeys{OpenAI: cfg.OpenAIAPIKey}
 		case "gemini":
 			keys = ai.APIKeys{Google: cfg.GoogleAPIKey}
+		case "grok", "xai":
+			keys = ai.APIKeys{XAI: cfg.XAIAPIKey}
 		}
 	}
 
@@ -240,7 +243,7 @@ func run(ctx context.Context) error {
 		} else {
 			out.Error("No API keys configured.")
 		}
-		out.Error("Set at least one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY")
+		out.Error("Set at least one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, XAI_API_KEY")
 		return fmt.Errorf("missing api keys")
 	}
 
@@ -295,7 +298,7 @@ func parseArgs(cfg config.Config) (cliOptions, error) {
 
 	fs.BoolVarP(&opts.Help, "help", "h", false, "display help")
 	fs.BoolVar(&opts.Version, "version", false, "output the version number")
-	fs.StringVarP(&opts.Provider, "provider", "p", opts.Provider, "AI provider: claude, openai, gemini")
+	fs.StringVarP(&opts.Provider, "provider", "p", opts.Provider, "AI provider: claude, openai, gemini, grok")
 	fs.StringVarP(&opts.Room, "room", "r", opts.Room, "Sonos speaker name")
 	fs.IntVarP(&opts.Count, "count", "c", opts.Count, "Number of songs generated per provider (1-50)")
 	fs.StringVarP(&opts.SonosAPI, "sonos-api", "s", opts.SonosAPI, "Sonos HTTP API URL")
@@ -318,10 +321,10 @@ func parseArgs(cfg config.Config) (cliOptions, error) {
 	}
 
 	switch strings.ToLower(opts.Provider) {
-	case "claude", "openai", "gemini":
+	case "claude", "openai", "gemini", "grok", "xai":
 		opts.Provider = strings.ToLower(opts.Provider)
 	default:
-		return cliOptions{}, usageError{msg: "provider must be one of: claude, openai, gemini"}
+		return cliOptions{}, usageError{msg: "provider must be one of: claude, openai, gemini, grok"}
 	}
 	if opts.Count < 1 || opts.Count > 50 {
 		return cliOptions{}, usageError{msg: "count must be between 1 and 50"}
@@ -343,7 +346,7 @@ func printUsage(cfg config.Config) {
 	fmt.Fprintln(os.Stdout, "Options:")
 	fmt.Fprintln(os.Stdout, "  -h, --help                 display help")
 	fmt.Fprintln(os.Stdout, "      --version              output the version number")
-	fmt.Fprintf(os.Stdout, "  -p, --provider <provider>  AI provider: claude, openai, gemini (default: %q)\n", cfg.DefaultProvider)
+	fmt.Fprintf(os.Stdout, "  -p, --provider <provider>  AI provider: claude, openai, gemini, grok (default: %q)\n", cfg.DefaultProvider)
 	fmt.Fprintln(os.Stdout, "  -r, --room <room>          Sonos speaker name")
 	fmt.Fprintf(os.Stdout, "  -c, --count <number>       Number of songs generated per provider (1-50) (default: %d)\n", cfg.DefaultCount)
 	fmt.Fprintf(os.Stdout, "  -s, --sonos-api <url>      Sonos HTTP API URL (default: %q)\n", cfg.SonosAPIURL)
@@ -530,6 +533,9 @@ func selectedProviders(keys ai.APIKeys) []string {
 	}
 	if keys.Google != "" {
 		providers = append(providers, "Gemini")
+	}
+	if keys.XAI != "" {
+		providers = append(providers, "Grok")
 	}
 	return providers
 }

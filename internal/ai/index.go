@@ -28,6 +28,9 @@ func GeneratePlaylistAllProviders(ctx context.Context, keys APIKeys, prompt stri
 	if keys.Google != "" {
 		calls = append(calls, providerCall{name: "gemini", key: keys.Google, fn: GeneratePlaylistGemini})
 	}
+	if keys.XAI != "" {
+		calls = append(calls, providerCall{name: "grok", key: keys.XAI, fn: GeneratePlaylistGrok})
+	}
 	if len(calls) == 0 {
 		return nil, fmt.Errorf("no api keys configured")
 	}
@@ -93,6 +96,7 @@ func GenerateMoreSongs(ctx context.Context, keys APIKeys, prompt string, existin
 		{key: keys.Anthropic, fn: GeneratePlaylistClaude},
 		{key: keys.OpenAI, fn: GeneratePlaylistOpenAI},
 		{key: keys.Google, fn: GeneratePlaylistGemini},
+		{key: keys.XAI, fn: GeneratePlaylistGrok},
 	}
 
 	for _, p := range providers {

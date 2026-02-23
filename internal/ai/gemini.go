@@ -32,7 +32,7 @@ Return only the JSON array, no explanation or markdown formatting.`, count, prom
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

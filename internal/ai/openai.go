@@ -32,7 +32,7 @@ Example: [{"title": "Blue in Green", "artist": "Miles Davis"}, {"title": "Take F
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

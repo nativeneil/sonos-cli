@@ -9,6 +9,7 @@ type APIKeys struct {
 	Anthropic string
 	OpenAI    string
 	Google    string
+	XAI       string
 }
 
 type RankedSong struct {

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"sonos-playlist/internal/ai"
@@ -60,6 +61,19 @@ var unwantedKeywords = []string{
 }
 
 var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
+
+type searchCacheEntry struct {
+	candidates []int
+	expiresAt  time.Time
+}
+
+var (
+	itunesHTTPClient = &http.Client{Timeout: 8 * time.Second}
+	searchCacheMu    sync.RWMutex
+	searchCache      = map[string]searchCacheEntry{}
+)
+
+const searchCacheTTL = 10 * time.Minute
 
 func debugf(format string, args ...any) {
 	if os.Getenv("DEBUG") == "1" {
@@ -170,6 +184,9 @@ func waitForExpectedTrack(ctx context.Context, client *Client, room string, song
 	encodedRoom := url.PathEscape(room)
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return false
+		}
 		var state sonosState
 		err := client.RequestJSON(ctx, "/"+encodedRoom+"/state", &state)
 		if err == nil && stateMatchesSong(state, song) {
@@ -184,6 +201,9 @@ func waitForExpectedTrackPlaying(ctx context.Context, client *Client, room strin
 	encodedRoom := url.PathEscape(room)
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return false
+		}
 		var state sonosState
 		err := client.RequestJSON(ctx, "/"+encodedRoom+"/state", &state)
 		if err == nil && stateMatchesSong(state, song) && isPlayingState(state) {
@@ -213,8 +233,96 @@ func getCoordinatorUUID(ctx context.Context, client *Client, room string) string
 }
 
 func searchITunesCandidates(ctx context.Context, song ai.Song) []int {
-	query := url.QueryEscape(song.Artist + " " + song.Title)
-	u := "https://itunes.apple.com/search?media=music&limit=25&entity=song&term=" + query
+	cacheKey := normalizeText(song.Artist) + ":::" + normalizeText(song.Title)
+	now := time.Now()
+
+	searchCacheMu.RLock()
+	entry, ok := searchCache[cacheKey]
+	searchCacheMu.RUnlock()
+
+	var baseCandidates []int
+	if ok && now.Before(entry.expiresAt) {
+		baseCandidates = append([]int(nil), entry.candidates...)
+	} else {
+		query := url.QueryEscape(song.Artist + " " + song.Title)
+		u := "https://itunes.apple.com/search?media=music&limit=25&entity=song&term=" + query
+
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		resp, err := itunesHTTPClient.Do(req)
+		if err != nil {
+			debugf("    [DEBUG] iTunes search error: %v", err)
+			return []int{}
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			debugf("    [DEBUG] iTunes fetch failed: %d", resp.StatusCode)
+			return []int{}
+		}
+		var data itunesSearchResult
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return []int{}
+		}
+		debugf("    [DEBUG] iTunes returned %d results", data.ResultCount)
+		if data.ResultCount == 0 {
+			return []int{}
+		}
+
+		type candidate struct {
+			trackID int
+			score   int
+		}
+
+		afterStreamable := make([]itunesTrack, 0, len(data.Results))
+		for _, t := range data.Results {
+			if t.IsStreamable != nil && !*t.IsStreamable {
+				continue
+			}
+			afterStreamable = append(afterStreamable, t)
+		}
+		afterUnwanted := make([]itunesTrack, 0, len(afterStreamable))
+		for _, t := range afterStreamable {
+			if !isUnwantedVersion(t.TrackName, t.ArtistName, t.Collection, song.Artist) {
+				afterUnwanted = append(afterUnwanted, t)
+			}
+		}
+		debugf("    [DEBUG] After streamable filter: %d", len(afterStreamable))
+		debugf("    [DEBUG] After unwanted filter: %d", len(afterUnwanted))
+
+		scored := make([]candidate, 0, len(afterUnwanted))
+		for _, t := range afterUnwanted {
+			sc := scoreMatch(t.TrackName, t.ArtistName, song)
+			scored = append(scored, candidate{trackID: t.TrackID, score: sc})
+		}
+		sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
+
+		positive := make([]int, 0, len(scored))
+		for _, c := range scored {
+			if c.score > 0 {
+				positive = append(positive, c.trackID)
+			}
+		}
+		if len(positive) > 0 {
+			baseCandidates = positive
+			debugf("    [DEBUG] Found %d positive matches, best ID: %d", len(positive), positive[0])
+		} else {
+			for _, t := range afterUnwanted {
+				baseCandidates = append(baseCandidates, t.TrackID)
+			}
+			if len(baseCandidates) > 0 {
+				debugf("    [DEBUG] Using fallback: %d", baseCandidates[0])
+			} else {
+				debugf("    [DEBUG] Using fallback: none")
+			}
+		}
+
+		searchCacheMu.Lock()
+		searchCache[cacheKey] = searchCacheEntry{
+			candidates: append([]int(nil), baseCandidates...),
+			expiresAt:  time.Now().Add(searchCacheTTL),
+		}
+		searchCacheMu.Unlock()
+	}
+
 	blocked := storage.GetBlockedTrackIDs()
 	replacements := []int{}
 	for _, id := range storage.GetSongReplacementTrackIDs(song.Artist, song.Title) {
@@ -222,97 +330,20 @@ func searchITunesCandidates(ctx context.Context, song ai.Song) []int {
 			replacements = append(replacements, id)
 		}
 	}
-
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		debugf("    [DEBUG] iTunes search error: %v", err)
-		return []int{}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		debugf("    [DEBUG] iTunes fetch failed: %d", resp.StatusCode)
-		return []int{}
-	}
-	var data itunesSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return []int{}
-	}
-	debugf("    [DEBUG] iTunes returned %d results", data.ResultCount)
-	if data.ResultCount == 0 {
-		return []int{}
-	}
-
-	type candidate struct {
-		trackID int
-		score   int
-	}
-
-	afterStreamable := make([]itunesTrack, 0, len(data.Results))
-	for _, t := range data.Results {
-		if t.IsStreamable != nil && !*t.IsStreamable {
+	filtered := make([]int, 0, len(baseCandidates))
+	for _, id := range baseCandidates {
+		if _, ok := blocked[id]; ok {
 			continue
 		}
-		afterStreamable = append(afterStreamable, t)
+		filtered = append(filtered, id)
 	}
-	afterUnwanted := make([]itunesTrack, 0, len(afterStreamable))
-	for _, t := range afterStreamable {
-		if !isUnwantedVersion(t.TrackName, t.ArtistName, t.Collection, song.Artist) {
-			afterUnwanted = append(afterUnwanted, t)
-		}
-	}
-	afterBlocked := make([]itunesTrack, 0, len(afterUnwanted))
-	for _, t := range afterUnwanted {
-		if _, ok := blocked[t.TrackID]; !ok {
-			afterBlocked = append(afterBlocked, t)
-		}
-	}
-	debugf("    [DEBUG] After streamable filter: %d", len(afterStreamable))
-	debugf("    [DEBUG] After unwanted filter: %d", len(afterUnwanted))
-	debugf("    [DEBUG] After blocklist filter: %d", len(afterBlocked))
+	debugf("    [DEBUG] After blocklist filter: %d", len(filtered))
 
-	scored := make([]candidate, 0, len(afterBlocked))
-	for _, t := range afterBlocked {
-		sc := scoreMatch(t.TrackName, t.ArtistName, song)
-		scored = append(scored, candidate{trackID: t.TrackID, score: sc})
-	}
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-
-	positive := []int{}
-	for _, c := range scored {
-		if c.score > 0 {
-			positive = append(positive, c.trackID)
-		}
-	}
-	if len(positive) > 0 {
-		preferred := dedupeInts(append(replacements, positive...))
-		if len(replacements) > 0 {
-			debugf("    [DEBUG] Found %d stored replacements", len(replacements))
-		}
-		debugf("    [DEBUG] Found %d positive matches, best ID: %d", len(positive), preferred[0])
-		return preferred
-	}
-
+	preferred := dedupeInts(append(replacements, filtered...))
 	if len(replacements) > 0 {
-		debugf("    [DEBUG] Using stored replacement IDs: %v", replacements)
-		return replacements
+		debugf("    [DEBUG] Found %d stored replacements", len(replacements))
 	}
-
-	for _, t := range data.Results {
-		if t.IsStreamable != nil && !*t.IsStreamable {
-			continue
-		}
-		if isUnwantedVersion(t.TrackName, t.ArtistName, t.Collection, song.Artist) {
-			continue
-		}
-		if _, ok := blocked[t.TrackID]; ok {
-			continue
-		}
-		debugf("    [DEBUG] Using fallback: %d", t.TrackID)
-		return []int{t.TrackID}
-	}
-	debugf("    [DEBUG] Using fallback: none")
-	return []int{}
+	return preferred
 }
 
 func dedupeInts(in []int) []int {
