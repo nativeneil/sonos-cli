@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/joho/godotenv"
-
-	"sonos-playlist/internal/ai"
 )
 
 type Provider string
@@ -24,10 +22,6 @@ type Config struct {
 	OpenAIAPIKey    string
 	GoogleAPIKey    string
 	XAIAPIKey       string
-	ClaudeModel     string
-	OpenAIModel     string
-	GeminiModel     string
-	GrokModel       string
 	SonosAPIURL     string
 	DefaultRoom     string
 	DefaultProvider Provider
@@ -39,10 +33,6 @@ type fileConfig struct {
 	DefaultRoom     string   `json:"defaultRoom"`
 	DefaultProvider Provider `json:"defaultProvider"`
 	DefaultCount    int      `json:"defaultCount"`
-	ClaudeModel     string   `json:"claudeModel"`
-	OpenAIModel     string   `json:"openaiModel"`
-	GeminiModel     string   `json:"geminiModel"`
-	GrokModel       string   `json:"grokModel"`
 }
 
 func init() {
@@ -70,10 +60,6 @@ func Load() Config {
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
 		GoogleAPIKey:    os.Getenv("GOOGLE_API_KEY"),
 		XAIAPIKey:       firstNonEmpty(os.Getenv("XAI_API_KEY"), os.Getenv("GROK_API_KEY")),
-		ClaudeModel:     firstNonEmpty(os.Getenv("ANTHROPIC_MODEL"), os.Getenv("SONOS_CLAUDE_MODEL"), fc.ClaudeModel, ai.DefaultClaudeModel),
-		OpenAIModel:     firstNonEmpty(os.Getenv("OPENAI_MODEL"), os.Getenv("SONOS_OPENAI_MODEL"), fc.OpenAIModel, ai.DefaultOpenAIModel),
-		GeminiModel:     firstNonEmpty(os.Getenv("GOOGLE_MODEL"), os.Getenv("GEMINI_MODEL"), os.Getenv("SONOS_GEMINI_MODEL"), fc.GeminiModel, ai.DefaultGeminiModel),
-		GrokModel:       firstNonEmpty(os.Getenv("XAI_MODEL"), os.Getenv("GROK_MODEL"), os.Getenv("SONOS_GROK_MODEL"), fc.GrokModel, ai.DefaultGrokModel),
 		SonosAPIURL:     sonosURL,
 		DefaultRoom:     defaultRoom,
 		DefaultProvider: provider,

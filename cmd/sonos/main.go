@@ -35,10 +35,6 @@ const (
 type cliOptions struct {
 	Provider          string
 	ProviderSpecified bool
-	ClaudeModel       string
-	OpenAIModel       string
-	GeminiModel       string
-	GrokModel         string
 	Room              string
 	Count             int
 	SonosAPI          string
@@ -261,7 +257,7 @@ func run(ctx context.Context) error {
 
 	result, err := playlist.GenerateAndPlay(ctx, playlist.GeneratorOptions{
 		Keys:             keys,
-		Models:           ai.Models{Claude: opts.ClaudeModel, OpenAI: opts.OpenAIModel, Gemini: opts.GeminiModel, Grok: opts.GrokModel},
+		Models:           ai.Models{},
 		Prompt:           prompt,
 		Room:             room,
 		DryRun:           opts.DryRun,
@@ -278,18 +274,12 @@ func run(ctx context.Context) error {
 		return out.EmitJSON(map[string]any{
 			"providers":        providers,
 			"countPerProvider": opts.Count,
-			"models": map[string]string{
-				"claude": opts.ClaudeModel,
-				"openai": opts.OpenAIModel,
-				"gemini": opts.GeminiModel,
-				"grok":   opts.GrokModel,
-			},
-			"room":            result.Room,
-			"dryRun":          result.DryRun,
-			"queuedSongs":     result.QueuedSongs,
-			"failedSongs":     result.FailedSongs,
-			"playbackStarted": result.PlaybackStarted,
-			"monitored":       result.Monitored,
+			"room":             result.Room,
+			"dryRun":           result.DryRun,
+			"queuedSongs":      result.QueuedSongs,
+			"failedSongs":      result.FailedSongs,
+			"playbackStarted":  result.PlaybackStarted,
+			"monitored":        result.Monitored,
 		})
 	}
 	return nil
@@ -297,14 +287,10 @@ func run(ctx context.Context) error {
 
 func parseArgs(cfg config.Config) (cliOptions, error) {
 	opts := cliOptions{
-		Provider:    string(cfg.DefaultProvider),
-		ClaudeModel: cfg.ClaudeModel,
-		OpenAIModel: cfg.OpenAIModel,
-		GeminiModel: cfg.GeminiModel,
-		GrokModel:   cfg.GrokModel,
-		Room:        cfg.DefaultRoom,
-		Count:       cfg.DefaultCount,
-		SonosAPI:    cfg.SonosAPIURL,
+		Provider: string(cfg.DefaultProvider),
+		Room:     cfg.DefaultRoom,
+		Count:    cfg.DefaultCount,
+		SonosAPI: cfg.SonosAPIURL,
 	}
 
 	fs := pflag.NewFlagSet("sonos", pflag.ContinueOnError)
@@ -314,10 +300,6 @@ func parseArgs(cfg config.Config) (cliOptions, error) {
 	fs.BoolVarP(&opts.Help, "help", "h", false, "display help")
 	fs.BoolVar(&opts.Version, "version", false, "output the version number")
 	fs.StringVarP(&opts.Provider, "provider", "p", opts.Provider, "AI provider: claude, openai, gemini, grok (or xai)")
-	fs.StringVar(&opts.ClaudeModel, "claude-model", opts.ClaudeModel, "Claude model ID")
-	fs.StringVar(&opts.OpenAIModel, "openai-model", opts.OpenAIModel, "OpenAI model ID")
-	fs.StringVar(&opts.GeminiModel, "gemini-model", opts.GeminiModel, "Gemini model ID")
-	fs.StringVar(&opts.GrokModel, "grok-model", opts.GrokModel, "Grok model ID")
 	fs.StringVarP(&opts.Room, "room", "r", opts.Room, "Sonos speaker name")
 	fs.IntVarP(&opts.Count, "count", "c", opts.Count, "Number of songs generated per provider (1-50)")
 	fs.StringVarP(&opts.SonosAPI, "sonos-api", "s", opts.SonosAPI, "Sonos HTTP API URL")
@@ -366,10 +348,6 @@ func printUsage(cfg config.Config) {
 	fmt.Fprintln(os.Stdout, "  -h, --help                 display help")
 	fmt.Fprintln(os.Stdout, "      --version              output the version number")
 	fmt.Fprintf(os.Stdout, "  -p, --provider <provider>  AI provider: claude, openai, gemini, grok, xai (default: %q)\n", cfg.DefaultProvider)
-	fmt.Fprintf(os.Stdout, "      --claude-model <id>    Claude model ID (default: %q)\n", cfg.ClaudeModel)
-	fmt.Fprintf(os.Stdout, "      --openai-model <id>    OpenAI model ID (default: %q)\n", cfg.OpenAIModel)
-	fmt.Fprintf(os.Stdout, "      --gemini-model <id>    Gemini model ID (default: %q)\n", cfg.GeminiModel)
-	fmt.Fprintf(os.Stdout, "      --grok-model <id>      Grok model ID (default: %q)\n", cfg.GrokModel)
 	fmt.Fprintln(os.Stdout, "  -r, --room <room>          Sonos speaker name")
 	fmt.Fprintf(os.Stdout, "  -c, --count <number>       Number of songs generated per provider (1-50) (default: %d)\n", cfg.DefaultCount)
 	fmt.Fprintf(os.Stdout, "  -s, --sonos-api <url>      Sonos HTTP API URL (default: %q)\n", cfg.SonosAPIURL)
