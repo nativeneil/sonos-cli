@@ -10,7 +10,7 @@ import (
 	"net/url"
 )
 
-func GeneratePlaylistGemini(ctx context.Context, apiKey, prompt string, count int) ([]Song, error) {
+func GeneratePlaylistGemini(ctx context.Context, apiKey, model, prompt string, count int) ([]Song, error) {
 	fullPrompt := fmt.Sprintf(`You are a music expert. Generate a playlist of exactly %d songs for: "%s"
 
 Return ONLY a JSON array of songs, no other text. Each song should have "title" and "artist" fields.
@@ -25,7 +25,7 @@ Return only the JSON array, no explanation or markdown formatting.`, count, prom
 		"generationConfig": map[string]int{"maxOutputTokens": 2048},
 	}
 	buf, _ := json.Marshal(payload)
-	u := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + url.QueryEscape(apiKey)
+	u := "https://generativelanguage.googleapis.com/v1beta/models/" + url.PathEscape(model) + ":generateContent?key=" + url.QueryEscape(apiKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err

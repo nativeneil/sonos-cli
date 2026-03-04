@@ -15,6 +15,7 @@ import (
 
 type GeneratorOptions struct {
 	Keys             ai.APIKeys
+	Models           ai.Models
 	Prompt           string
 	Room             string
 	DryRun           bool
@@ -44,13 +45,13 @@ func songKey(song ai.Song) string {
 	return strings.ToLower(song.Artist) + ":::" + strings.ToLower(song.Title)
 }
 
-func generateFastStartSongs(ctx context.Context, keys ai.APIKeys, prompt string) []ai.Song {
+func generateFastStartSongs(ctx context.Context, keys ai.APIKeys, models ai.Models, prompt string) []ai.Song {
 	if keys.Google == "" {
 		return []ai.Song{}
 	}
 	fctx, cancel := context.WithTimeout(ctx, fastStartTimeout)
 	defer cancel()
-	songs, err := ai.GeneratePlaylistGemini(fctx, keys.Google, prompt, 3)
+	songs, err := ai.GeneratePlaylistGemini(fctx, keys.Google, models.WithDefaults().Gemini, prompt, 3)
 	if err != nil {
 		return []ai.Song{}
 	}
@@ -59,6 +60,7 @@ func generateFastStartSongs(ctx context.Context, keys ai.APIKeys, prompt string)
 
 func GenerateAndPlay(ctx context.Context, options GeneratorOptions) (Result, error) {
 	keys := options.Keys
+	models := options.Models.WithDefaults()
 	prompt := options.Prompt
 	room := options.Room
 	dryRun := options.DryRun
@@ -125,8 +127,8 @@ func GenerateAndPlay(ctx context.Context, options GeneratorOptions) (Result, err
 
 	var songs []ai.RankedSong
 	if !dryRun {
-		out.Info("Generating fast-start songs (Gemini 3 Flash)...")
-		fastStartCandidates := generateFastStartSongs(ctx, keys, prompt)
+		out.Info(fmt.Sprintf("Generating fast-start songs (%s)...", models.Gemini))
+		fastStartCandidates := generateFastStartSongs(ctx, keys, models, prompt)
 
 		if err := sonos.Pause(ctx, client, room); err != nil {
 			// ignore pause failures
@@ -167,7 +169,7 @@ func GenerateAndPlay(ctx context.Context, options GeneratorOptions) (Result, err
 	}
 
 	out.Info(fmt.Sprintf("Generating playlist from all providers for: %q", prompt))
-	ranked, err := ai.GeneratePlaylistAllProviders(ctx, keys, prompt, countPerProvider)
+	ranked, err := ai.GeneratePlaylistAllProviders(ctx, keys, models, prompt, countPerProvider)
 	if err != nil {
 		return Result{}, err
 	}
@@ -206,7 +208,7 @@ func GenerateAndPlay(ctx context.Context, options GeneratorOptions) (Result, err
 			if fastStartSong != nil {
 				existing = append(existing, *fastStartSong)
 			}
-			moreSongs, err := ai.GenerateMoreSongs(ctx, keys, prompt, existing, countPerProvider)
+			moreSongs, err := ai.GenerateMoreSongs(ctx, keys, models, prompt, existing, countPerProvider)
 			if err != nil {
 				return Result{}, err
 			}

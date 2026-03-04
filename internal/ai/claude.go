@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-func GeneratePlaylistClaude(ctx context.Context, apiKey, prompt string, count int) ([]Song, error) {
+func GeneratePlaylistClaude(ctx context.Context, apiKey, model, prompt string, count int) ([]Song, error) {
 	systemPrompt := `You are a music expert. Generate playlists based on user requests.
 Return ONLY a JSON array of songs, no other text. Each song should have "title" and "artist" fields.
 Example: [{"title": "Blue in Green", "artist": "Miles Davis"}, {"title": "Take Five", "artist": "Dave Brubeck"}]`
@@ -17,7 +17,7 @@ Example: [{"title": "Blue in Green", "artist": "Miles Davis"}, {"title": "Take F
 	userPrompt := fmt.Sprintf("Generate a playlist of exactly %d songs for: \"%s\"\nReturn only the JSON array, no explanation.", count, prompt)
 
 	payload := map[string]any{
-		"model":      "claude-sonnet-4-6",
+		"model":      model,
 		"max_tokens": 2048,
 		"system":     systemPrompt,
 		"messages": []map[string]any{

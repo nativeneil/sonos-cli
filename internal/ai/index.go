@@ -12,24 +12,26 @@ func songKey(song Song) string {
 	return strings.ToLower(song.Artist) + ":::" + strings.ToLower(song.Title)
 }
 
-func GeneratePlaylistAllProviders(ctx context.Context, keys APIKeys, prompt string, countPerProvider int) ([]RankedSong, error) {
+func GeneratePlaylistAllProviders(ctx context.Context, keys APIKeys, models Models, prompt string, countPerProvider int) ([]RankedSong, error) {
+	models = models.WithDefaults()
 	type providerCall struct {
-		name string
-		key  string
-		fn   func(context.Context, string, string, int) ([]Song, error)
+		name  string
+		key   string
+		model string
+		fn    func(context.Context, string, string, string, int) ([]Song, error)
 	}
 	calls := []providerCall{}
 	if keys.Anthropic != "" {
-		calls = append(calls, providerCall{name: "claude", key: keys.Anthropic, fn: GeneratePlaylistClaude})
+		calls = append(calls, providerCall{name: "claude", key: keys.Anthropic, model: models.Claude, fn: GeneratePlaylistClaude})
 	}
 	if keys.OpenAI != "" {
-		calls = append(calls, providerCall{name: "openai", key: keys.OpenAI, fn: GeneratePlaylistOpenAI})
+		calls = append(calls, providerCall{name: "openai", key: keys.OpenAI, model: models.OpenAI, fn: GeneratePlaylistOpenAI})
 	}
 	if keys.Google != "" {
-		calls = append(calls, providerCall{name: "gemini", key: keys.Google, fn: GeneratePlaylistGemini})
+		calls = append(calls, providerCall{name: "gemini", key: keys.Google, model: models.Gemini, fn: GeneratePlaylistGemini})
 	}
 	if keys.XAI != "" {
-		calls = append(calls, providerCall{name: "grok", key: keys.XAI, fn: GeneratePlaylistGrok})
+		calls = append(calls, providerCall{name: "grok", key: keys.XAI, model: models.Grok, fn: GeneratePlaylistGrok})
 	}
 	if len(calls) == 0 {
 		return nil, fmt.Errorf("no api keys configured")
@@ -44,7 +46,7 @@ func GeneratePlaylistAllProviders(ctx context.Context, keys APIKeys, prompt stri
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			songs, err := call.fn(ctx, call.key, prompt, countPerProvider)
+			songs, err := call.fn(ctx, call.key, call.model, prompt, countPerProvider)
 			if err != nil {
 				return
 			}
@@ -77,7 +79,8 @@ func GeneratePlaylistAllProviders(ctx context.Context, keys APIKeys, prompt stri
 	return ranked, nil
 }
 
-func GenerateMoreSongs(ctx context.Context, keys APIKeys, prompt string, existingSongs []Song, count int) ([]Song, error) {
+func GenerateMoreSongs(ctx context.Context, keys APIKeys, models Models, prompt string, existingSongs []Song, count int) ([]Song, error) {
+	models = models.WithDefaults()
 	existing := map[string]struct{}{}
 	for _, s := range existingSongs {
 		existing[songKey(s)] = struct{}{}
@@ -90,20 +93,21 @@ func GenerateMoreSongs(ctx context.Context, keys APIKeys, prompt string, existin
 	newPrompt := prompt + ". Exclude these songs: " + strings.Join(exclude, ", ") + ". Give me different songs."
 
 	providers := []struct {
-		key string
-		fn  func(context.Context, string, string, int) ([]Song, error)
+		key   string
+		model string
+		fn    func(context.Context, string, string, string, int) ([]Song, error)
 	}{
-		{key: keys.Anthropic, fn: GeneratePlaylistClaude},
-		{key: keys.OpenAI, fn: GeneratePlaylistOpenAI},
-		{key: keys.Google, fn: GeneratePlaylistGemini},
-		{key: keys.XAI, fn: GeneratePlaylistGrok},
+		{key: keys.Anthropic, model: models.Claude, fn: GeneratePlaylistClaude},
+		{key: keys.OpenAI, model: models.OpenAI, fn: GeneratePlaylistOpenAI},
+		{key: keys.Google, model: models.Gemini, fn: GeneratePlaylistGemini},
+		{key: keys.XAI, model: models.Grok, fn: GeneratePlaylistGrok},
 	}
 
 	for _, p := range providers {
 		if p.key == "" {
 			continue
 		}
-		songs, err := p.fn(ctx, p.key, newPrompt, count)
+		songs, err := p.fn(ctx, p.key, p.model, newPrompt, count)
 		if err != nil {
 			continue
 		}
